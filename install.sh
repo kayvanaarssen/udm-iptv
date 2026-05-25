@@ -19,12 +19,13 @@ if command -v unifi-os > /dev/null 2>&1; then
 fi
 
 UDM_IPTV_VERSION=3.0.6
+FORK_RAW=https://raw.githubusercontent.com/kayvanaarssen/udm-iptv/master
 
 dest=$(mktemp -d)
 
 echo "Downloading packages..."
 
-# Download udm-iptv package
+# Download udm-iptv package from upstream release
 curl -sS -o "$dest/udm-iptv.deb" -L "https://github.com/fabianishere/udm-iptv/releases/download/v$UDM_IPTV_VERSION/udm-iptv_${UDM_IPTV_VERSION}_all.deb"
 
 # Fix permissions on the packages
@@ -41,12 +42,31 @@ apt-get install -q -y dialog 2>&1 1>/dev/null || echo "Failed to install dialog.
 # Install udm-iptv
 apt-get install -o Acquire::AllowUnsizedPackages=1 -q "$dest/udm-iptv.deb"
 
-# Cache the .deb to /data/ for UCG firmware update recovery before deleting it.
-# postinst also does this via apt's cache, but the downloaded file is guaranteed
-# to exist here so we copy it explicitly as a belt-and-suspenders measure.
+# Overwrite fork-modified files that are not in the upstream .deb release.
+# The upstream .deb ships the original udm-iptv management script; we replace
+# it with our version that adds the 'persist' command and UCG recovery logic.
+echo "Applying fork patches..."
+curl -sS -o /usr/bin/udm-iptv "$FORK_RAW/udm-iptv"
+chmod +x /usr/bin/udm-iptv
+
+# Install the on-boot recovery script into the package directory.
+mkdir -p /usr/lib/udm-iptv
+curl -sS -o /usr/lib/udm-iptv/10-udm-iptv.sh "$FORK_RAW/scripts/10-udm-iptv.sh"
+chmod +x /usr/lib/udm-iptv/10-udm-iptv.sh
+
+# Set up /data/ persistence for UCG devices (firmware updates wipe the root fs).
 if [ -d /data ]; then
-    mkdir -p /data/udm-iptv
+    mkdir -p /data/udm-iptv /data/on_boot.d
+
+    # Cache the .deb so the boot recovery script can reinstall without network.
     cp "$dest/udm-iptv.deb" /data/udm-iptv/udm-iptv.deb
+
+    # Back up current config if it already exists.
+    [ -f /etc/udm-iptv.conf ] && cp /etc/udm-iptv.conf /data/udm-iptv/udm-iptv.conf
+
+    # Install the boot recovery script.
+    cp /usr/lib/udm-iptv/10-udm-iptv.sh /data/on_boot.d/10-udm-iptv.sh
+    chmod +x /data/on_boot.d/10-udm-iptv.sh
 fi
 
 # Delete downloaded packages
@@ -58,7 +78,7 @@ echo "Use the following command to reconfigure the script:"
 echo
 printf "\t udm-iptv reconfigure\n"
 echo
-if [ -d /data/on_boot.d ] || [ -d /data ]; then
+if [ -d /data ]; then
     echo "UCG persistence: boot recovery script installed to /data/on_boot.d/10-udm-iptv.sh"
     echo "After a firmware update, udm-iptv will be automatically reinstalled on next boot."
     echo "(Requires UniFi OS native on_boot.d support or the unifios-utilities on-boot package.)"
