@@ -101,4 +101,36 @@ mv "$tmpconf" "$(readlink -f "$CONFIGFILE")"
 
 #DEBHELPER#
 
+# Set up persistence for UCG/UniFi OS devices where firmware updates replace
+# the root filesystem entirely, wiping apt-installed packages.
+# /data/ is a separate persistent partition that survives these updates.
+UCG_PERSIST_DIR=/data/udm-iptv
+ON_BOOT_DIR=/data/on_boot.d
+RECOVERY_SCRIPT=/usr/lib/udm-iptv/10-udm-iptv.sh
+
+if [ -d /data ]; then
+    mkdir -p "$UCG_PERSIST_DIR"
+
+    # Cache the installed .deb so the boot recovery script can reinstall it.
+    # apt-get install copies the .deb to /var/cache/apt/archives/ automatically.
+    cached_deb=$(find /var/cache/apt/archives -name "udm-iptv_*.deb" 2>/dev/null | sort -V | tail -1)
+    if [ -n "$cached_deb" ]; then
+        cp "$cached_deb" "$UCG_PERSIST_DIR/udm-iptv.deb"
+    fi
+
+    # Back up the current configuration so it can be restored after a firmware wipe.
+    if [ -f "$CONFIGFILE" ]; then
+        cp "$CONFIGFILE" "$UCG_PERSIST_DIR/udm-iptv.conf"
+    fi
+
+    # Install the on-boot recovery script.  /data/on_boot.d/ is scanned on
+    # every boot by the UniFi OS boot hook or the unifios-utilities on-boot
+    # package — whichever is present on the device.
+    mkdir -p "$ON_BOOT_DIR"
+    if [ -f "$RECOVERY_SCRIPT" ]; then
+        cp "$RECOVERY_SCRIPT" "$ON_BOOT_DIR/10-udm-iptv.sh"
+        chmod +x "$ON_BOOT_DIR/10-udm-iptv.sh"
+    fi
+fi
+
 exit 0

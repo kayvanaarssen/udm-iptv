@@ -29,6 +29,44 @@ udm_iptv_uninstall()
     apt-get remove -y dialog igmpproxy udm-iptv
 }
 
+# Refresh the /data/ persistence cache (deb + config + boot script).
+# Run this after any manual config change so the backup stays current.
+udm_iptv_persist()
+{
+    PERSIST_DIR=/data/udm-iptv
+    ON_BOOT_DIR=/data/on_boot.d
+    RECOVERY_SCRIPT=/usr/lib/udm-iptv/10-udm-iptv.sh
+    CONF=/etc/udm-iptv.conf
+
+    if [ ! -d /data ]; then
+        echo "error: /data/ is not available on this device — persistence not supported."
+        exit 1
+    fi
+
+    mkdir -p "$PERSIST_DIR" "$ON_BOOT_DIR"
+
+    cached_deb=$(find /var/cache/apt/archives -name "udm-iptv_*.deb" 2>/dev/null | sort -V | tail -1)
+    if [ -n "$cached_deb" ]; then
+        cp "$cached_deb" "$PERSIST_DIR/udm-iptv.deb"
+        echo "Cached package: $PERSIST_DIR/udm-iptv.deb"
+    else
+        echo "warning: No cached .deb found in apt archives — run 'udm-iptv upgrade' first."
+    fi
+
+    if [ -f "$CONF" ]; then
+        cp "$CONF" "$PERSIST_DIR/udm-iptv.conf"
+        echo "Backed up config: $PERSIST_DIR/udm-iptv.conf"
+    fi
+
+    if [ -f "$RECOVERY_SCRIPT" ]; then
+        cp "$RECOVERY_SCRIPT" "$ON_BOOT_DIR/10-udm-iptv.sh"
+        chmod +x "$ON_BOOT_DIR/10-udm-iptv.sh"
+        echo "Installed boot recovery script: $ON_BOOT_DIR/10-udm-iptv.sh"
+    fi
+
+    echo "Persistence cache updated."
+}
+
 # Restart the udm-iptv daemon via systemd
 udm_iptv_restart()
 {
@@ -80,13 +118,14 @@ udm_iptv_usage()
 {
 	cat << EOF
 Usage: $0 [OPTIONS...] COMMAND [ARGS]...
-Helper tool for routed IPTV on the UniFi Dream Machine (Pro/SE).
+Helper tool for routed IPTV on the UniFi Dream Machine (Pro/SE) and UCG devices.
 Commands:
   configure         Re-configure the udm-iptv installation
   upgrade           Upgrade the udm-iptv installation to the latest version
   uninstall         Remove udm-iptv from the system
   restart           Restart the udm-iptv daemon
   diagnose          Diagnose issues with the current configuration
+  persist           Refresh the /data/ persistence cache (UCG firmware update recovery)
 Options:
   -h, --help    Show this message and exit
 EOF
@@ -122,6 +161,10 @@ case $1 in
     diag|diagnose)
         shift
         udm_iptv_diagnose "$@"
+        ;;
+    persist)
+        shift
+        udm_iptv_persist "$@"
         ;;
     *)
         udm_iptv_usage

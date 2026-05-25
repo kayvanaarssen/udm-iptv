@@ -41,6 +41,14 @@ apt-get install -q -y dialog 2>&1 1>/dev/null || echo "Failed to install dialog.
 # Install udm-iptv
 apt-get install -o Acquire::AllowUnsizedPackages=1 -q "$dest/udm-iptv.deb"
 
+# Cache the .deb to /data/ for UCG firmware update recovery before deleting it.
+# postinst also does this via apt's cache, but the downloaded file is guaranteed
+# to exist here so we copy it explicitly as a belt-and-suspenders measure.
+if [ -d /data ]; then
+    mkdir -p /data/udm-iptv
+    cp "$dest/udm-iptv.deb" /data/udm-iptv/udm-iptv.deb
+fi
+
 # Delete downloaded packages
 rm -rf "$dest"
 
@@ -49,3 +57,10 @@ echo
 echo "Use the following command to reconfigure the script:"
 echo
 printf "\t udm-iptv reconfigure\n"
+echo
+if [ -d /data/on_boot.d ] || [ -d /data ]; then
+    echo "UCG persistence: boot recovery script installed to /data/on_boot.d/10-udm-iptv.sh"
+    echo "After a firmware update, udm-iptv will be automatically reinstalled on next boot."
+    echo "(Requires UniFi OS native on_boot.d support or the unifios-utilities on-boot package.)"
+    echo "Run 'udm-iptv persist' at any time to refresh the persistence cache."
+fi

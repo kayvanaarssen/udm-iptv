@@ -143,9 +143,47 @@ If you experience any issues while setting up the service, please visit the
 ### Installation across Firmware Updates
 
 **Please remember to make a backup of your configuration before a
-firmware update**. Currently, your configuration and installation might or might
-not persist across firmware updates depending on the type of upgrade
+firmware update**.
+
+#### UDM Pro / UDM SE
+
+On UDM Pro and UDM SE devices, UniFi OS uses an incremental firmware update
+strategy. The `ubnt-dpkg-cache` mechanism can re-install packages after an
+update, but this is not always reliable
 (see [#120](https://github.com/fabianishere/udm-iptv/issues/120)).
+
+#### UCG (Cloud Gateway Ultra, UCG Fiber, UCG Max) and UDR
+
+On UCG and UDR devices, firmware updates **replace the root filesystem
+entirely**, wiping all apt-installed packages. The only storage that survives
+is the `/data/` partition.
+
+This fork adds automatic recovery for these devices. During installation,
+the following is set up in persistent storage:
+
+| Path | Contents |
+|---|---|
+| `/data/udm-iptv/udm-iptv.deb` | Cached copy of the installed package |
+| `/data/udm-iptv/udm-iptv.conf` | Backup of your configuration |
+| `/data/on_boot.d/10-udm-iptv.sh` | Boot recovery script |
+
+On the **first boot after a firmware update**, the recovery script detects that
+`udm-iptv` is missing, reinstalls it from the cached `.deb`, restores the
+configuration, and starts the service — without any manual intervention.
+
+> **Note:** The `/data/on_boot.d/` hook requires either the
+> [unifios-utilities on-boot package](https://github.com/unifi-utilities/unifios-utilities)
+> **or** a UniFi OS version that natively executes `/data/on_boot.d/` scripts
+> on startup. Without one of these, you will still need to re-run the install
+> script manually after a firmware update (the cached `.deb` and config are
+> preserved either way).
+
+To manually refresh the persistence cache at any time (e.g. after a config
+change):
+
+```bash
+udm-iptv persist
+```
 
 ### Configuration
 You can modify the configuration of the service interactively as follows:
